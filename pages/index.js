@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -222,6 +223,29 @@ export default function Home() {
         <h1>Google Maps → Website → Email Extractor</h1>
         <p className="subtitle">Extract business emails from Google Maps listings</p>
       </header>
+
+      <nav style={{ marginBottom: '2rem', display: 'flex', gap: '1rem' }}>
+        <Link href="/" style={{ 
+          padding: '0.5rem 1rem', 
+          background: '#4a90e2', 
+          color: 'white', 
+          textDecoration: 'none',
+          borderRadius: '4px',
+          fontWeight: '600'
+        }}>
+          Scrape Data
+        </Link>
+        <Link href="/process" style={{ 
+          padding: '0.5rem 1rem', 
+          background: '#66bb6a', 
+          color: 'white', 
+          textDecoration: 'none',
+          borderRadius: '4px',
+          fontWeight: '600'
+        }}>
+          Process & Extract Emails
+        </Link>
+      </nav>
 
       <main>
         <form onSubmit={handleScrape} className="search-form">

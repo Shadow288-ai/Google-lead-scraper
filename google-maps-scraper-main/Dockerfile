@@ -62,4 +62,23 @@ RUN chmod -R 755 /opt/browsers \
 
 COPY --from=builder /usr/bin/google-maps-scraper /usr/bin/
 
-ENTRYPOINT ["google-maps-scraper"]
+# Install Python and dependencies for email extraction
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy Python script and requirements
+COPY extract_contact_emails.py /extract_contact_emails.py
+COPY requirements.txt /requirements.txt
+
+# Install Python dependencies
+RUN pip3 install --no-cache-dir -r /requirements.txt
+
+# Create data directory
+RUN mkdir -p /gmapsdata
+
+# Use CMD with shell to allow environment variable substitution
+# Railway sets PORT automatically, default to 8080 if not set
+CMD sh -c 'google-maps-scraper -data-folder /gmapsdata -addr ":${PORT:-8080}"'

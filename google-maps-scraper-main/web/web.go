@@ -23,15 +23,17 @@ import (
 var static embed.FS
 
 type Server struct {
-	tmpl map[string]*template.Template
-	srv  *http.Server
-	svc  *Service
+	tmpl           map[string]*template.Template
+	srv            *http.Server
+	svc            *Service
+	emailProcessor *EmailProcessor
 }
 
-func New(svc *Service, addr string) (*Server, error) {
+func New(svc *Service, addr string, dataFolder string) (*Server, error) {
 	ans := Server{
-		svc:  svc,
-		tmpl: make(map[string]*template.Template),
+		svc:            svc,
+		tmpl:           make(map[string]*template.Template),
+		emailProcessor: NewEmailProcessor(dataFolder),
 		srv: &http.Server{
 			Addr:              addr,
 			ReadHeaderTimeout: 10 * time.Second,
@@ -63,10 +65,15 @@ func New(svc *Service, addr string) (*Server, error) {
 		ans.delete(w, r)
 	})
 	mux.HandleFunc("/jobs", ans.getJobs)
+	mux.HandleFunc("/process", ans.processPage)
 	mux.HandleFunc("/", ans.index)
 
 	// api routes
 	mux.HandleFunc("/api/docs", ans.redocHandler)
+	mux.HandleFunc("/api/v1/scraper-files", ans.apiScraperFiles)
+	mux.HandleFunc("/api/v1/process-emails", ans.apiProcessEmails)
+	mux.HandleFunc("/api/v1/filter-results", ans.apiFilterResults)
+	mux.HandleFunc("/api/v1/download-processed", ans.apiDownloadProcessed)
 	mux.HandleFunc("/api/v1/jobs", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPost:
@@ -126,6 +133,7 @@ func New(svc *Service, addr string) (*Server, error) {
 		"static/templates/job_rows.html",
 		"static/templates/job_row.html",
 		"static/templates/redoc.html",
+		"static/templates/process.html",
 	}
 
 	for _, key := range tmplsKeys {
@@ -607,6 +615,165 @@ func (s *Server) apiDeleteJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func (s *Server) processPage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	tmpl, ok := s.tmpl["static/templates/process.html"]
+	if !ok {
+		http.Error(w, "missing template", http.StatusInternalServerError)
+		return
+	}
+
+	_ = tmpl.Execute(w, nil)
+}
+
+func (s *Server) apiScraperFiles(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		renderJSON(w, http.StatusMethodNotAllowed, apiError{
+			Code:    http.StatusMethodNotAllowed,
+			Message: "Method not allowed",
+		})
+		return
+	}
+
+	files, err := s.emailProcessor.ListCSVFiles(r.Context())
+	if err != nil {
+		renderJSON(w, http.StatusInternalServerError, apiError{
+			Code:    http.StatusInternalServerError,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	// Convert Modified times to strings for JSON
+	type FileInfo struct {
+		Filename string `json:"filename"`
+		Path     string `json:"path"`
+		Size     int64  `json:"size"`
+		Modified string `json:"modified"`
+	}
+
+	fileInfos := make([]FileInfo, len(files))
+	for i, f := range files {
+		fileInfos[i] = FileInfo{
+			Filename: f.Filename,
+			Path:     f.Path,
+			Size:     f.Size,
+			Modified: f.Modified.Format(time.RFC3339),
+		}
+	}
+
+	renderJSON(w, http.StatusOK, map[string]interface{}{
+		"files": fileInfos,
+	})
+}
+
+func (s *Server) apiProcessEmails(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		renderJSON(w, http.StatusMethodNotAllowed, apiError{
+			Code:    http.StatusMethodNotAllowed,
+			Message: "Method not allowed",
+		})
+		return
+	}
+
+	var req ProcessRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		renderJSON(w, http.StatusBadRequest, apiError{
+			Code:    http.StatusBadRequest,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	result, err := s.emailProcessor.ProcessCSV(r.Context(), req)
+	if err != nil {
+		renderJSON(w, http.StatusInternalServerError, apiError{
+			Code:    http.StatusInternalServerError,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	if !result.Success {
+		renderJSON(w, http.StatusBadRequest, result)
+		return
+	}
+
+	renderJSON(w, http.StatusOK, result)
+}
+
+func (s *Server) apiFilterResults(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		renderJSON(w, http.StatusMethodNotAllowed, apiError{
+			Code:    http.StatusMethodNotAllowed,
+			Message: "Method not allowed",
+		})
+		return
+	}
+
+	var req struct {
+		Results []EnrichedLead `json:"results"`
+		Filters Filters        `json:"filters"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		renderJSON(w, http.StatusBadRequest, apiError{
+			Code:    http.StatusBadRequest,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	filtered := s.emailProcessor.FilterResults(req.Results, req.Filters)
+
+	renderJSON(w, http.StatusOK, map[string]interface{}{
+		"results": filtered,
+		"count":   len(filtered),
+	})
+}
+
+func (s *Server) apiDownloadProcessed(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		renderJSON(w, http.StatusMethodNotAllowed, apiError{
+			Code:    http.StatusMethodNotAllowed,
+			Message: "Method not allowed",
+		})
+		return
+	}
+
+	file := r.URL.Query().Get("file")
+	if file == "" {
+		renderJSON(w, http.StatusBadRequest, apiError{
+			Code:    http.StatusBadRequest,
+			Message: "file parameter is required",
+		})
+		return
+	}
+
+	// Security: ensure file is within data folder
+	if strings.Contains(file, "..") {
+		renderJSON(w, http.StatusBadRequest, apiError{
+			Code:    http.StatusBadRequest,
+			Message: "invalid file path",
+		})
+		return
+	}
+
+	if _, err := os.Stat(file); os.IsNotExist(err) {
+		renderJSON(w, http.StatusNotFound, apiError{
+			Code:    http.StatusNotFound,
+			Message: "file not found",
+		})
+		return
+	}
+
+	http.ServeFile(w, r, file)
 }
 
 func renderJSON(w http.ResponseWriter, code int, data any) {

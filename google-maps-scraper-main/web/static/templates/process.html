@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Process & Extract Emails - Google Maps Scraper</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/htmx/1.9.6/htmx.min.js"></script>
+    <style>
+        .process-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        .nav-links {
+            margin-bottom: 2rem;
+            display: flex;
+            gap: 1rem;
+        }
+        .nav-links a {
+            padding: 0.5rem 1rem;
+            background: #4a90e2;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+        .nav-links a.process {
+            background: #66bb6a;
+        }
+        .form-section {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+        }
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+        }
+        .form-group select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+        .form-group input[type="checkbox"] {
+            margin-right: 0.5rem;
+        }
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 4px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn-primary {
+            background: #4a90e2;
+            color: white;
+        }
+        .btn-primary:hover:not(:disabled) {
+            background: #357abd;
+        }
+        .btn-primary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .btn-secondary {
+            background: #66bb6a;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background: #4caf50;
+        }
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 1rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+        }
+        .results-section {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .filters {
+            background: #f9f9f9;
+            padding: 1rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+        }
+        .filters h3 {
+            margin-bottom: 1rem;
+            font-size: 1.1rem;
+        }
+        .filter-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+        .filter-item {
+            display: flex;
+            align-items: center;
+        }
+        .filter-item input[type="number"],
+        .filter-item input[type="text"] {
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 150px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+        th {
+            background: #f5f5f5;
+            padding: 1rem;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid #ddd;
+        }
+        td {
+            padding: 1rem;
+            border-bottom: 1px solid #eee;
+        }
+        tr:hover {
+            background: #f9f9f9;
+        }
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .no-email {
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <div class="process-container">
+        <header>
+            <h1>Process & Extract Emails</h1>
+            <p>Extract contact emails from scraped business data</p>
+        </header>
+
+        <nav class="nav-links">
+            <a href="/">Scrape Data</a>
+            <a href="/process" class="process">Process & Extract Emails</a>
+        </nav>
+
+        <div class="form-section">
+            <div class="form-group">
+                <label for="fileSelect">Select CSV File to Process *</label>
+                <select id="fileSelect">
+                    <option value="">-- Select a file --</option>
+                </select>
+                <p id="fileError" style="color: #c62828; margin-top: 0.5rem; display: none;"></p>
+            </div>
+
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="usePlaywright">
+                    Use Playwright (slower but handles JavaScript-heavy sites)
+                </label>
+            </div>
+
+            <button class="btn btn-primary" onclick="handleProcess()" id="processBtn">
+                Process & Extract Emails
+            </button>
+        </div>
+
+        <div id="errorContainer"></div>
+
+        <div id="resultsSection" class="results-section" style="display: none;">
+            <div class="results-header">
+                <h2>Results (<span id="resultCount">0</span>)</h2>
+                <button class="btn btn-secondary" onclick="handleExport()">Export CSV</button>
+            </div>
+
+            <div class="filters">
+                <h3>Filters</h3>
+                <div class="filter-grid">
+                    <div class="filter-item">
+                        <input type="checkbox" id="excludeNoEmail" checked onchange="handleFilterChange()">
+                        <label for="excludeNoEmail">Exclude businesses without email</label>
+                    </div>
+                    <div class="filter-item">
+                        <label for="minReviews">Min Reviews:</label>
+                        <input type="number" id="minReviews" value="0" min="0" onchange="handleFilterChange()">
+                    </div>
+                    <div class="filter-item">
+                        <label for="locationFilter">Location contains:</label>
+                        <input type="text" id="locationFilter" placeholder="e.g., Miami" oninput="debounceFilter()">
+                    </div>
+                </div>
+            </div>
+
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Forename</th>
+                            <th>Company Name</th>
+                            <th>Location</th>
+                            <th>Reviews</th>
+                            <th>Email</th>
+                            <th>Phone</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsTable">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let allResults = [];
+        let filteredResults = [];
+        let filterTimeout = null;
+
+        // Load CSV files on page load
+        window.addEventListener('DOMContentLoaded', async () => {
+            await loadScraperFiles();
+        });
+
+        async function loadScraperFiles() {
+            try {
+                const response = await fetch('/api/v1/scraper-files');
+                const data = await response.json();
+                const select = document.getElementById('fileSelect');
+                select.innerHTML = '<option value="">-- Select a file --</option>';
+                
+                if (data.files && data.files.length > 0) {
+                    data.files.forEach(file => {
+                        const option = document.createElement('option');
+                        option.value = file.path;
+                        option.textContent = `${file.filename} (${(file.size / 1024).toFixed(1)} KB, ${new Date(file.modified).toLocaleDateString()})`;
+                        select.appendChild(option);
+                    });
+                } else {
+                    const option = document.createElement('option');
+                    option.textContent = 'No CSV files found. Run a scrape job first.';
+                    option.disabled = true;
+                    select.appendChild(option);
+                }
+            } catch (err) {
+                console.error('Error loading files:', err);
+            }
+        }
+
+        async function handleProcess() {
+            const fileSelect = document.getElementById('fileSelect');
+            const usePlaywright = document.getElementById('usePlaywright').checked;
+            const processBtn = document.getElementById('processBtn');
+            const errorContainer = document.getElementById('errorContainer');
+            const resultsSection = document.getElementById('resultsSection');
+
+            if (!fileSelect.value) {
+                errorContainer.innerHTML = '<div class="error">Please select a CSV file to process</div>';
+                return;
+            }
+
+            errorContainer.innerHTML = '';
+            processBtn.disabled = true;
+            processBtn.textContent = 'Processing...';
+            resultsSection.style.display = 'none';
+
+            try {
+                const response = await fetch('/api/v1/process-emails', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        input_file: fileSelect.value,
+                        use_playwright: usePlaywright,
+                        filters: {}
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || 'Processing failed');
+                }
+
+                allResults = data.results || [];
+                filteredResults = allResults;
+                applyFilters();
+                displayResults();
+            } catch (err) {
+                errorContainer.innerHTML = `<div class="error">${err.message}</div>`;
+            } finally {
+                processBtn.disabled = false;
+                processBtn.textContent = 'Process & Extract Emails';
+            }
+        }
+
+        function debounceFilter() {
+            clearTimeout(filterTimeout);
+            filterTimeout = setTimeout(handleFilterChange, 300);
+        }
+
+        async function handleFilterChange() {
+            const filters = {
+                exclude_no_email: document.getElementById('excludeNoEmail').checked,
+                min_reviews: parseInt(document.getElementById('minReviews').value) || 0,
+                location: document.getElementById('locationFilter').value
+            };
+
+            try {
+                const response = await fetch('/api/v1/filter-results', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        results: allResults,
+                        filters: filters
+                    })
+                });
+
+                const data = await response.json();
+                filteredResults = data.results || [];
+                displayResults();
+            } catch (err) {
+                console.error('Filter error:', err);
+            }
+        }
+
+        function displayResults() {
+            const tbody = document.getElementById('resultsTable');
+            const resultCount = document.getElementById('resultCount');
+            
+            resultCount.textContent = filteredResults.length;
+            tbody.innerHTML = '';
+
+            filteredResults.forEach(result => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${result.forename || '-'}</td>
+                    <td>${result.company_name || '-'}</td>
+                    <td>${result.company_location || '-'}</td>
+                    <td>${result.google_reviews || '0'}</td>
+                    <td>${result.email ? `<a href="mailto:${result.email}">${result.email}</a>` : '<span class="no-email">No email</span>'}</td>
+                    <td>${result.phone_number || '-'}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function handleExport() {
+            if (filteredResults.length === 0) {
+                alert('No results to export');
+                return;
+            }
+
+            const headers = ['forename', 'company_name', 'company_location', 'google_reviews', 'email', 'phone_number'];
+            const csvContent = [
+                headers.join(','),
+                ...filteredResults.map(row => 
+                    headers.map(header => {
+                        const value = row[header] || '';
+                        if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+                            return `"${value.replace(/"/g, '""')}"`;
+                        }
+                        return value;
+                    }).join(',')
+                )
+            ].join('\n');
+
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `enriched_leads_${Date.now()}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        }
+
+        function applyFilters() {
+            handleFilterChange();
+        }
+    </script>
+</body>
+</html>
+

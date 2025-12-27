@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  scraper:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./gmapsdata:/gmapsdata
+      - ./extract_contact_emails.py:/extract_contact_emails.py
+      - ./requirements.txt:/requirements.txt
+    command: -data-folder /gmapsdata
+    restart: unless-stopped
+    environment:
+      - DISABLE_TELEMETRY=1
+

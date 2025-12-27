@@ -1,9 +1,12 @@
 const express = require('express');
 const cors = require('cors');
 const db = require('./db');
+const fs = require('fs');
+const path = require('path');
 const { scrapeGoogleMaps } = require('./scrapers/mapsScraper');
 const { scrapeEmailsFromWebsite } = require('./scrapers/emailScraper');
 const { createCSV } = require('./utils/csvExporter');
+const { processCSVWithEmailExtraction, filterResults } = require('./utils/emailExtractor');
 const locations = require('./data/locations.json');
 const categories = require('./data/categories.json');
 
@@ -308,6 +311,126 @@ app.get('/api/suggestions/categories', (req, res) => {
   );
   
   res.json({ suggestions: suggestions.slice(0, 50) });
+});
+
+/**
+ * API endpoint to get list of CSV files from Google Maps scraper
+ */
+app.get('/api/scraper-files', (req, res) => {
+  const scraperDataDir = path.join(__dirname, '../google-maps-scraper-main/gmapsdata');
+  
+  try {
+    if (!fs.existsSync(scraperDataDir)) {
+      return res.json({ files: [] });
+    }
+    
+    const files = fs.readdirSync(scraperDataDir)
+      .filter(file => file.endsWith('.csv') && file !== 'jobs.db')
+      .map(file => {
+        const filePath = path.join(scraperDataDir, file);
+        const stats = fs.statSync(filePath);
+        return {
+          filename: file,
+          path: filePath,
+          size: stats.size,
+          modified: stats.mtime
+        };
+      })
+      .sort((a, b) => b.modified - a.modified); // Most recent first
+    
+    res.json({ files });
+  } catch (error) {
+    console.error('Error listing scraper files:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * API endpoint to process CSV with email extraction
+ */
+app.post('/api/process-emails', async (req, res) => {
+  const { inputFile, usePlaywright = false, filters = {} } = req.body;
+  
+  if (!inputFile) {
+    return res.status(400).json({ error: 'Input file is required' });
+  }
+  
+  try {
+    // Check if file exists
+    if (!fs.existsSync(inputFile)) {
+      return res.status(404).json({ error: 'Input file not found' });
+    }
+    
+    // Process the CSV
+    const result = await processCSVWithEmailExtraction(inputFile, usePlaywright);
+    
+    if (!result.success) {
+      return res.status(500).json({ error: result.error || 'Processing failed' });
+    }
+    
+    // Apply filters
+    let filteredResults = result.results;
+    if (Object.keys(filters).length > 0) {
+      filteredResults = filterResults(result.results, filters);
+    }
+    
+    res.json({
+      success: true,
+      results: filteredResults,
+      totalCount: result.count,
+      filteredCount: filteredResults.length,
+      outputFile: result.outputFile
+    });
+  } catch (error) {
+    console.error('Error processing emails:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * API endpoint to get filtered results
+ */
+app.post('/api/filter-results', (req, res) => {
+  const { results, filters } = req.body;
+  
+  if (!results || !Array.isArray(results)) {
+    return res.status(400).json({ error: 'Results array is required' });
+  }
+  
+  try {
+    const filtered = filterResults(results, filters || {});
+    res.json({
+      results: filtered,
+      count: filtered.length
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * API endpoint to download processed CSV
+ */
+app.get('/api/download-processed', (req, res) => {
+  const { file } = req.query;
+  
+  if (!file) {
+    return res.status(400).json({ error: 'File parameter is required' });
+  }
+  
+  try {
+    if (!fs.existsSync(file)) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+    
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="enriched_leads_${Date.now()}.csv"`);
+    
+    const fileStream = fs.createReadStream(file);
+    fileStream.pipe(res);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.listen(PORT, () => {

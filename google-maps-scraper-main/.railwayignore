@@ -1,0 +1,17 @@
+.git
+.gitignore
+*.md
+.env
+.DS_Store
+node_modules
+*.db
+*.db-shm
+*.db-wal
+gmapsdata/*
+testdata
+.vscode
+.idea
+coverage.out
+coverage.html
+deploy.sh
+

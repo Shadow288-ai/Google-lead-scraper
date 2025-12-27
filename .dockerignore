@@ -2,7 +2,7 @@
 .git
 .gitignore
 
-# Documentation (but keep README if needed)
+# Documentation
 *.md
 !README.md
 
@@ -15,32 +15,18 @@ coverage.out
 coverage.html
 
 # Build artifacts
-node_modules/
-.next/
-out/
 bin/
 *.db
 *.db-shm
 *.db-wal
-*.sqlite
-*.sqlite3
 
-# Data directories
-google-maps-scraper-main/gmapsdata/*
-!google-maps-scraper-main/gmapsdata/.gitkeep
+# Data directories (but allow empty structure)
+gmapsdata/*
+!gmapsdata/.gitkeep
 
 # Test files
 testdata/
-playwright-report/
-test-results/
-temp/
-__pycache__/
 
-# Do NOT ignore files needed for building:
-# - google-maps-scraper-main/go.mod
-# - google-maps-scraper-main/go.sum
-# - google-maps-scraper-main/Dockerfile
-# - google-maps-scraper-main/extract_contact_emails.py
-# - google-maps-scraper-main/requirements.txt
-# - All Go source files in google-maps-scraper-main/
-
+# Do NOT ignore go.mod and go.sum - they are required!
+# Do NOT ignore Dockerfile
+# Do NOT ignore railway config files

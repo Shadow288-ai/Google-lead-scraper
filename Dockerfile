@@ -78,9 +78,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy Python script and requirements
-COPY google-maps-scraper-main/extract_contact_emails.py /extract_contact_emails.py
-COPY google-maps-scraper-main/requirements.txt /requirements.txt
+# Copy Python script and requirements from builder stage (where all files are already copied)
+COPY --from=builder /app/extract_contact_emails.py /extract_contact_emails.py
+COPY --from=builder /app/requirements.txt /requirements.txt
 
 # Install Python dependencies
 RUN pip3 install --no-cache-dir -r /requirements.txt

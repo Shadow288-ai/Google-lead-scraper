@@ -73,8 +73,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY extract_contact_emails.py /extract_contact_emails.py
 COPY requirements.txt /requirements.txt
 
-# Install Python dependencies
-RUN pip3 install --no-cache-dir -r /requirements.txt
+    # Install Python dependencies
+    # Use --break-system-packages because we control the entire Docker container
+    RUN pip3 install --break-system-packages --no-cache-dir -r /requirements.txt
 
 # Create data directory
 RUN mkdir -p /gmapsdata

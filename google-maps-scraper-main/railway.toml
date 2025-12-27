@@ -1,7 +1,6 @@
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
-watchPatterns = ["**/*.go", "go.mod", "go.sum", "Dockerfile"]
 
 [deploy]
 startCommand = ""
